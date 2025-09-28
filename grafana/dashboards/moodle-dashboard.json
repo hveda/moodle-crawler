@@ -1,0 +1,68 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Moodle Online Users",
+    "tags": ["moodle"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Online Users Count",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "moodle_online_users_total",
+            "legendFormat": "{{site}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 50},
+                {"color": "red", "value": 100}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Online Users Over Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "moodle_online_users_total",
+            "legendFormat": "{{site}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "URL Discovery Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "moodle_find_online_users_latency_milliseconds",
+            "legendFormat": "{{site}}",
+            "refId": "B"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      }
+    ],
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}

@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # Textfile collector for serving .prom files
+  textfile-collector:
+    image: prom/node-exporter:latest
+    container_name: moodle-textfile-collector
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9101:9100"
+    volumes:
+      - ./data/python:/var/lib/node_exporter/textfile_collector/python:ro
+      - ./data/docker:/var/lib/node_exporter/textfile_collector/docker:ro
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.textfile.directory=/var/lib/node_exporter/textfile_collector'
+      - '--collector.disable-defaults'
+      - '--collector.textfile'
+      - '--web.listen-address=0.0.0.0:9100'
+    user: "65534:65534"
+    read_only: true
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: moodle-grafana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_USERS_ALLOW_ORG_CREATE=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    user: "472:472"
+    depends_on:
+      - textfile-collector
+
+volumes:
+  grafana_data:
+    driver: local
