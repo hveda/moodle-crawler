@@ -215,7 +215,7 @@ docker-compose up -d
 ## 📋 Requirements
 
 ### Local Development
-- Python 3.7+ with pip and venv
+- Python 3.14+ with pip and venv
 - Go 1.19+ (for Go version)
 - Docker/Podman (for local Grafana)
 

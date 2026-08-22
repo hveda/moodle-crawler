@@ -1,5 +1,5 @@
 # Multi-stage build with security hardening
-FROM golang:1.25.1-alpine3.22 AS builder
+FROM golang:1.25.13-alpine3.22 AS builder
 # Install security updates and required packages
 RUN apk update && apk upgrade && apk add --no-cache ca-certificates git tzdata
 
@@ -16,7 +16,7 @@ ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 RUN go build -ldflags="-w -s -extldflags '-static'" -a -installsuffix cgo -o /app/moodle-crawler
 
 # Security scanning stage (optional, can be enabled in CI)
-FROM alpine:3.22 AS security-scan
+FROM alpine:3.23 AS security-scan
 RUN apk add --no-cache curl
 COPY --from=builder /app/moodle-crawler /tmp/binary
 # RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
