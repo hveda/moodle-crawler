@@ -1,5 +1,5 @@
 # Multi-stage build with security hardening
-FROM golang:1.25.13-alpine3.22 AS builder
+FROM golang:1.25.13-alpine3.23 AS builder
 # Install security updates and required packages
 RUN apk update && apk upgrade && apk add --no-cache ca-certificates git tzdata
 
