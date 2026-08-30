@@ -27,6 +27,42 @@ func ensureDir(dir string) error {
 	return os.MkdirAll(dir, 0o755)
 }
 
+// writeTextfileSnapshot writes a current-value .prom file (one line per
+// metric, no timestamps) for node_exporter's textfile collector, which
+// rejects appended files with client-side timestamps. Atomic via tmp+rename.
+func writeTextfileSnapshot(dir, siteLabel string, onlineCount int, latencyMs int, success bool) error {
+	if dir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	successVal := 0
+	if success {
+		successVal = 1
+	}
+	content := fmt.Sprintf(
+		"# HELP moodle_online_users_total Total number of online users on the Moodle site\n"+
+			"# TYPE moodle_online_users_total gauge\n"+
+			"moodle_online_users_total{site=\"%s\"} %d\n"+
+			"# HELP moodle_find_online_users_latency_milliseconds Latency (milliseconds) to locate the online users URL\n"+
+			"# TYPE moodle_find_online_users_latency_milliseconds gauge\n"+
+			"moodle_find_online_users_latency_milliseconds{site=\"%s\"} %d\n"+
+			"# HELP moodle_scrape_success Whether the last scrape succeeded (1) or failed (0)\n"+
+			"# TYPE moodle_scrape_success gauge\n"+
+			"moodle_scrape_success{site=\"%s\"} %d\n",
+		siteLabel, onlineCount,
+		siteLabel, latencyMs,
+		siteLabel, successVal,
+	)
+	tmp := filepath.Join(dir, ".moodle-crawler.prom.tmp")
+	final := filepath.Join(dir, "moodle-crawler.prom")
+	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, final)
+}
+
 func sanitizeSiteLabel(u string) string {
 	s := strings.ReplaceAll(u, "http://", "")
 	s = strings.ReplaceAll(s, "https://", "")
@@ -340,6 +376,7 @@ func main() {
 	interval := flag.Int("interval", 60, "Interval between crawls in seconds")
 	duration := flag.Int("duration", 0, "Stop after this many minutes (0 = run indefinitely)")
 	outdir := flag.String("output-dir", "data", "Output directory")
+	textfileDir := flag.String("textfile-dir", "", "Also write current-value .prom snapshot here for node_exporter textfile collector (no timestamps, atomic overwrite)")
 	prometheus := flag.Bool("prometheus", true, "Write Prometheus metrics")
 	healthcheck := flag.Bool("healthcheck", false, "Run a single health probe against the local /health endpoint and exit")
 	flag.Parse()
@@ -455,6 +492,12 @@ func main() {
 			// indistinguishable from a genuine "0 users online" reading in Grafana.
 			// The gap plus moodle_scrape_success=0 signals the outage instead.
 			log.Printf("scrape failed, skipping moodle_online_users_total write\n")
+			// Still refresh the textfile snapshot so scrape_success=0 is visible.
+			if *textfileDir != "" {
+				if err := writeTextfileSnapshot(*textfileDir, siteLabel, 0, latencyMs, false); err != nil {
+					log.Printf("error writing textfile snapshot: %v\n", err)
+				}
+			}
 		} else {
 			count := extractOnlineUsers(html)
 			log.Printf("extracted online users: %d from %s\n", count, u)
@@ -462,6 +505,11 @@ func main() {
 			if *prometheus {
 				if err := appendLine(metricsPath, metricLine, metricHeaders); err != nil {
 					log.Printf("error writing metric: %v\n", err)
+				}
+			}
+			if *textfileDir != "" {
+				if err := writeTextfileSnapshot(*textfileDir, siteLabel, count, latencyMs, true); err != nil {
+					log.Printf("error writing textfile snapshot: %v\n", err)
 				}
 			}
 		}
