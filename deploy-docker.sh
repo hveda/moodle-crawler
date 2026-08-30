@@ -40,7 +40,7 @@ fi
 # Configuration with environment variable defaults
 IMAGE="${REGISTRY_URL:-registry.digitalocean.com/sibermu/moodle-crawler:latest}"
 SERVICE_NAME=moodle-crawler-docker.service
-SERVICE_SRC=./config/systemd/moodle-crawler-docker.service
+SERVICE_SRC=./moodle-crawler-docker.service
 DATA_DIR="${DATA_DIR:-/opt/moodle-crawler-docker/data}"
 USER_OWNER="${SERVICE_USER:-moodle}"
 DOCKER_CONFIG_SRC="./config/docker/docker-config.json"

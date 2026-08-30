@@ -338,6 +338,7 @@ func loginAsGuest(ctx context.Context, client *http.Client, base string) error {
 func main() {
 	url := flag.String("url", "https://example.com", "Base Moodle URL")
 	interval := flag.Int("interval", 60, "Interval between crawls in seconds")
+	duration := flag.Int("duration", 0, "Stop after this many minutes (0 = run indefinitely)")
 	outdir := flag.String("output-dir", "data", "Output directory")
 	prometheus := flag.Bool("prometheus", true, "Write Prometheus metrics")
 	healthcheck := flag.Bool("healthcheck", false, "Run a single health probe against the local /health endpoint and exit")
@@ -357,9 +358,13 @@ func main() {
 
 	siteLabel := sanitizeSiteLabel(*url)
 	log.Printf("Starting crawler for %s (label=%s), output=%s, interval=%ds\n", *url, siteLabel, *outdir, *interval)
+	if *duration > 0 {
+		log.Printf("Running for %d minutes\n", *duration)
+	}
 
 	// lastStatus==1 when last scrape succeeded (able to fetch page), 0 otherwise
 	var lastStatus int32 = 0
+	startTime := time.Now()
 
 	// If invoked as a one-off healthcheck, probe the local HTTP health endpoint and exit
 	if *healthcheck {
@@ -462,5 +467,10 @@ func main() {
 		}
 
 		time.Sleep(time.Duration(*interval) * time.Second)
+
+		if *duration > 0 && time.Since(startTime) >= time.Duration(*duration)*time.Minute {
+			log.Printf("Reached specified duration of %d minutes\n", *duration)
+			break
+		}
 	}
 }
