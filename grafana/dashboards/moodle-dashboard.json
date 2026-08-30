@@ -1,68 +1,165 @@
 {
-  "dashboard": {
-    "id": null,
-    "title": "Moodle Online Users",
-    "tags": ["moodle"],
-    "timezone": "browser",
-    "panels": [
-      {
-        "id": 1,
-        "title": "Online Users Count",
-        "type": "stat",
-        "targets": [
-          {
-            "expr": "moodle_online_users_total",
-            "legendFormat": "{{site}}",
-            "refId": "A"
-          }
-        ],
-        "fieldConfig": {
-          "defaults": {
-            "color": {
-              "mode": "thresholds"
-            },
-            "thresholds": {
-              "steps": [
-                {"color": "green", "value": null},
-                {"color": "yellow", "value": 50},
-                {"color": "red", "value": 100}
-              ]
-            }
+  "id": null,
+  "uid": "moodle-crawler",
+  "title": "Moodle Crawler",
+  "tags": ["moodle"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": true,
+  "refresh": "1m",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Online Users",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "moodle_online_users_total", "legendFormat": "{{site}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 100 }
+            ]
           }
         },
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+        "overrides": []
       },
-      {
-        "id": 2,
-        "title": "Online Users Over Time",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "moodle_online_users_total",
-            "legendFormat": "{{site}}",
-            "refId": "A"
-          }
-        ],
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
-      },
-      {
-        "id": 3,
-        "title": "URL Discovery Latency",
-        "type": "timeseries",
-        "targets": [
-          {
-            "expr": "moodle_find_online_users_latency_milliseconds",
-            "legendFormat": "{{site}}",
-            "refId": "B"
-          }
-        ],
-        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
-      }
-    ],
-    "time": {
-      "from": "now-6h",
-      "to": "now"
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 }
     },
-    "refresh": "30s"
-  }
+    {
+      "id": 2,
+      "title": "Scrape Success",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "moodle_scrape_success", "legendFormat": "{{site}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "FAIL", "color": "red" }, "1": { "text": "OK", "color": "green" } } }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 }
+    },
+    {
+      "id": 3,
+      "title": "Guest-Accessible Courses",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "count(max_over_time(moodle_course_page_load_latency_ms[1h]))", "legendFormat": "courses", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" }, "decimals": 0 },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 }
+    },
+    {
+      "id": 4,
+      "title": "Tracked Sections",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "count(max_over_time(moodle_section_page_avg_load_latency_ms[1h]))", "legendFormat": "sections", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "fixed", "fixedColor": "purple" }, "decimals": 0 },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 }
+    },
+    {
+      "id": 5,
+      "title": "Online Users Over Time",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "moodle_online_users_total", "legendFormat": "{{site}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 }
+    },
+    {
+      "id": 6,
+      "title": "URL Discovery Latency",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "moodle_find_online_users_latency_milliseconds", "legendFormat": "{{site}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
+          "unit": "ms",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 }
+    },
+    {
+      "id": 7,
+      "title": "Course Page Load Latency",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "moodle_course_page_load_latency_ms", "legendFormat": "{{course}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 8, "lineWidth": 2, "showPoints": "never" },
+          "unit": "ms",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 }
+    },
+    {
+      "id": 8,
+      "title": "Section Page Latency (avg / min / max)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "moodle_section_page_avg_load_latency_ms", "legendFormat": "avg {{course}} / {{section}}", "refId": "A" },
+        { "expr": "moodle_section_page_min_load_latency_ms", "legendFormat": "min {{course}} / {{section}}", "refId": "B" },
+        { "expr": "moodle_section_page_max_load_latency_ms", "legendFormat": "max {{course}} / {{section}}", "refId": "C" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 5, "lineWidth": 1, "showPoints": "never" },
+          "unit": "ms",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 }
+    }
+  ]
 }
