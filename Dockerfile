@@ -10,7 +10,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 
-COPY main.go .
+COPY main.go courses.go ./
 # Build with security flags and optimizations
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 RUN go build -ldflags="-w -s -extldflags '-static'" -a -installsuffix cgo -o /app/moodle-crawler
