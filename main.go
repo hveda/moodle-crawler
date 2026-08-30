@@ -376,8 +376,9 @@ func main() {
 	interval := flag.Int("interval", 60, "Interval between crawls in seconds")
 	duration := flag.Int("duration", 0, "Stop after this many minutes (0 = run indefinitely)")
 	outdir := flag.String("output-dir", "data", "Output directory")
-	textfileDir := flag.String("textfile-dir", "", "Also write current-value .prom snapshot here for node_exporter textfile collector (no timestamps, atomic overwrite)")
+	textfileDir := flag.String("textfile-dir", "", "Also write current-value .prom snapshot here for node_exporter textfile collector")
 	prometheus := flag.Bool("prometheus", true, "Write Prometheus metrics")
+	coursesMode := flag.Bool("courses", false, "Also collect course/section page load latency metrics")
 	healthcheck := flag.Bool("healthcheck", false, "Run a single health probe against the local /health endpoint and exit")
 	flag.Parse()
 
@@ -512,6 +513,36 @@ func main() {
 					log.Printf("error writing textfile snapshot: %v\n", err)
 				}
 			}
+		}
+
+		// Course/section latency collection (optional).
+		if *coursesMode {
+			cctx, ccancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			courses, err := fetchCourses(cctx, client, *url)
+			if err != nil {
+				log.Printf("course discovery failed: %v\n", err)
+			} else {
+				log.Printf("courses discovered: %d\n", len(courses))
+				courseLatencies := map[int]int{}
+				var allStats []sectionStat
+				for _, c := range courses {
+					htmlC, ms, err := fetchCoursePage(cctx, client, *url, c.ID)
+					if err != nil {
+						log.Printf("course %d fetch failed: %v\n", c.ID, err)
+						continue
+					}
+					courseLatencies[c.ID] = ms
+					secs := parseSections(htmlC)
+					stats := collectSectionStats(cctx, client, *url, c.Name, c.ID, secs)
+					allStats = append(allStats, stats...)
+				}
+				if err := writeCourseMetrics(*outdir, siteLabel, courses, courseLatencies, allStats, ts); err != nil {
+					log.Printf("error writing course metrics: %v\n", err)
+				} else {
+					log.Printf("course metrics: %d courses, %d section stats\n", len(courseLatencies), len(allStats))
+				}
+			}
+			ccancel()
 		}
 
 		time.Sleep(time.Duration(*interval) * time.Second)
