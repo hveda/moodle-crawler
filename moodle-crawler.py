@@ -392,7 +392,8 @@ logger.addHandler(console_handler)
 
 
 class MoodleCrawler:
-    def __init__(self, base_url: str, interval: int = None, output_dir: str = "data", config: Optional[CrawlerConfig] = None):
+    def __init__(self, base_url: str, interval: int = None, output_dir: str = "data",
+                 config: Optional[CrawlerConfig] = None, allow_example_fallback: bool = False):
         """
         Initialize the Moodle crawler.
 
@@ -401,11 +402,14 @@ class MoodleCrawler:
             interval: Interval between crawls in seconds
             output_dir: Directory to save collected data
             config: Configuration object with crawler settings
+            allow_example_fallback: Permit example.html substitution when the
+                real page is unreachable (demo/testing only)
         """
         self.config = config or CrawlerConfig()
         self.base_url = base_url.rstrip('/')
         self.interval = interval or self.config.default_interval_seconds
         self.output_dir = output_dir
+        self.allow_example_fallback = allow_example_fallback
         self.session = requests.Session()
         self.headers = {
             'User-Agent': self.config.user_agent,
@@ -665,14 +669,18 @@ class MoodleCrawler:
         """
         # First try to get the real page
         try:
-            response = self.session.get(url, headers=self.headers)
+            response = self.session.get(url, headers=self.headers, timeout=30)
             response.raise_for_status()
             return response.text
         except requests.exceptions.RequestException as e:
             logger.warning(f"Failed to access {url}: {e}")
-            logger.info("Using example.html as fallback for demonstration")
 
-            # Use example.html as fallback for demonstration
+            if not self.allow_example_fallback:
+                # Never substitute demo data for live metrics — a stale
+                # example.html read would silently pollute metrics.prom.
+                return None
+
+            logger.info("Using example.html as fallback (--example enabled)")
             try:
                 with open(self.config.example_html_filename, 'r') as f:
                     return f.read()
@@ -949,6 +957,14 @@ def main() -> int:
         action="store_true",
         help="Verify the script setup and exit"
     )
+    parser.add_argument(
+        "--example",
+        action="store_true",
+        help=(
+            "Allow example.html fallback when the real page cannot be "
+            "fetched (demo/testing only — never enable in production)"
+        )
+    )
     args = parser.parse_args()
 
     # Verification mode - just print a success message and exit
@@ -963,7 +979,8 @@ def main() -> int:
         crawler = MoodleCrawler(
             base_url=args.url,
             interval=args.interval,
-            output_dir=args.output_dir
+            output_dir=args.output_dir,
+            allow_example_fallback=args.example
         )
         crawler.run(args.duration, args.prometheus)
         return 0

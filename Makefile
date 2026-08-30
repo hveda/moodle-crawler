@@ -3,54 +3,51 @@
 # Container runtime detection (default: podman)
 CONTAINER_RUNTIME ?= $(shell which podman 2>/dev/null || which docker 2>/dev/null || echo "podman")
 
-# Load environment variables from .env.production
-include .env.production
-
 .PHONY: build build-go test test-go test-python clean run-python run-go deploy docker-deploy docker-build docker-push container-info sync-data help
 
 # Build targets
 build: build-go
 
 build-go:
-	cd src/go && go build -o ../../build/moodle-crawler main.go
+	go build -o build/moodle-crawler main.go
 
 # Test targets
 test: test-go test-python
 
 test-go:
-	cd src/go && go test -v
+	go test -v ./...
 
 test-python:
-	cd src/python && python -m pytest test_extract.py -v
+	python -m pytest test_extract.py -v
 
 # Clean build artifacts
 clean:
 	rm -rf build/*
-	rm -rf src/python/__pycache__
+	rm -rf __pycache__
 	rm -rf venv
 
 # Run targets
 run-python:
-	./scripts/run/run-crawler.sh --verify
+	./run-crawler.sh --verify
 
 run-go:
-	cd src/go && go run main.go --url=https://example.com --interval=60
+	go run main.go --url=https://example.com --interval=60
 
 # Deployment targets
 deploy:
-	./scripts/deployment/deploy.sh
+	./deploy.sh
 
 docker-deploy:
-	./scripts/deployment/deploy-docker.sh
+	./deploy-docker.sh
 
 # Development setup
 setup:
 	python3 -m venv venv
-	./venv/bin/pip install -r src/python/requirements.txt
+	./venv/bin/pip install -r requirements.txt
 
 # Container build (for local testing)
 docker-build:
-	$(CONTAINER_RUNTIME) build -f config/docker/Dockerfile -t moodle-crawler:latest .
+	$(CONTAINER_RUNTIME) build -t moodle-crawler:latest .
 
 # Container push to registry
 docker-push:
@@ -63,6 +60,9 @@ container-info:
 	@$(CONTAINER_RUNTIME) --version 2>/dev/null || echo "Warning: $(CONTAINER_RUNTIME) not found"
 
 # Data synchronization from remote server
+# Set REMOTE_HOST/REMOTE_USER etc. in the environment or a local .env file
+# (do NOT commit credentials). Example:
+#   make sync-data REMOTE_HOST=host REMOTE_USER=user SSH_KEY_PATH=~/.ssh/id_rsa
 sync-data:
 	@echo "📊 Syncing data from remote server..."
 	@mkdir -p data/python data/docker
@@ -77,7 +77,7 @@ sync-data:
 # Help target showing all available commands
 help:
 	@echo "🔧 Moodle Crawler - Simple Data Collection Tool"
-	@echo "==============================================="
+	@echo "=============================================="
 	@echo ""
 	@echo "📋 SETUP COMMANDS:"
 	@echo "  setup              Setup Python virtual environment"
@@ -97,7 +97,7 @@ help:
 	@echo "🐳 CONTAINER OPERATIONS:"
 	@echo "  docker-build       Build container image locally"
 	@echo "  docker-push        Push to container registry"
-	@echo "  container-info     Show detected container runtime"
+	@echo "  container-info     Show container runtime"
 	@echo ""
 	@echo "☁️  DEPLOYMENT:"
 	@echo "  deploy             Deploy Python version to remote server"

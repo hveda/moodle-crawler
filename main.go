@@ -326,23 +326,10 @@ func loginAsGuest(ctx context.Context, client *http.Client, base string) error {
 	})
 
 	// After attempting guest access, try to fetch /my/ to ensure we're in the guest dashboard
-	if !found {
-		// still attempt to follow the loginredirect to /my/
-		myURL := strings.TrimRight(base, "/") + "/my/"
-		req3, _ := http.NewRequestWithContext(ctx, "GET", myURL, nil)
-		resp3, err := client.Do(req3)
-		if err == nil {
-			resp3.Body.Close()
-			// we won't fail here — caller can still continue
-		}
-	} else {
-		// if found, fetch /my/ to complete the redirect sequence and populate session
-		myURL := strings.TrimRight(base, "/") + "/my/"
-		req3, _ := http.NewRequestWithContext(ctx, "GET", myURL, nil)
-		resp3, err := client.Do(req3)
-		if err == nil {
-			resp3.Body.Close()
-		}
+	myURL := strings.TrimRight(base, "/") + "/my/"
+	req3, _ := http.NewRequestWithContext(ctx, "GET", myURL, nil)
+	if resp3, err := client.Do(req3); err == nil {
+		resp3.Body.Close()
 	}
 
 	return nil
@@ -365,6 +352,8 @@ func main() {
 	latencyPath := filepath.Join(*outdir, "latency.prom")
 	metricHeaders := []string{`# HELP moodle_online_users_total Total number of online users on the Moodle site`, `# TYPE moodle_online_users_total gauge`}
 	latencyHeaders := []string{`# HELP moodle_find_online_users_latency_milliseconds Latency (milliseconds) to locate the online users URL`, `# TYPE moodle_find_online_users_latency_milliseconds gauge`}
+	scrapeSuccessHeaders := []string{`# HELP moodle_scrape_success Whether the last scrape succeeded (1) or failed (0)`, `# TYPE moodle_scrape_success gauge`}
+	scrapeSuccessPath := filepath.Join(*outdir, "scrape_success.prom")
 
 	siteLabel := sanitizeSiteLabel(*url)
 	log.Printf("Starting crawler for %s (label=%s), output=%s, interval=%ds\n", *url, siteLabel, *outdir, *interval)
@@ -443,12 +432,32 @@ func main() {
 		} else {
 			atomic.StoreInt32(&lastStatus, 0)
 		}
-		count := extractOnlineUsers(html)
-		log.Printf("extracted online users: %d from %s\n", count, u)
-		metricLine := fmt.Sprintf("moodle_online_users_total{site=\"%s\"} %d %d", siteLabel, count, ts)
+
+		// Always record scrape success so failures are visible in monitoring
 		if *prometheus {
-			if err := appendLine(metricsPath, metricLine, metricHeaders); err != nil {
-				log.Printf("error writing metric: %v\n", err)
+			successVal := 0
+			if success {
+				successVal = 1
+			}
+			scrapeLine := fmt.Sprintf("moodle_scrape_success{site=\"%s\"} %d %d", siteLabel, successVal, ts)
+			if err := appendLine(scrapeSuccessPath, scrapeLine, scrapeSuccessHeaders); err != nil {
+				log.Printf("error writing scrape success metric: %v\n", err)
+			}
+		}
+
+		if !success {
+			// Do NOT write moodle_online_users_total on failure — a zero here is
+			// indistinguishable from a genuine "0 users online" reading in Grafana.
+			// The gap plus moodle_scrape_success=0 signals the outage instead.
+			log.Printf("scrape failed, skipping moodle_online_users_total write\n")
+		} else {
+			count := extractOnlineUsers(html)
+			log.Printf("extracted online users: %d from %s\n", count, u)
+			metricLine := fmt.Sprintf("moodle_online_users_total{site=\"%s\"} %d %d", siteLabel, count, ts)
+			if *prometheus {
+				if err := appendLine(metricsPath, metricLine, metricHeaders); err != nil {
+					log.Printf("error writing metric: %v\n", err)
+				}
 			}
 		}
 

@@ -1,7 +1,10 @@
 version: '3.8'
 
 services:
-  # Textfile collector for serving .prom files
+  # Textfile collector for serving .prom files.
+  # NOTE: node_exporter's textfile collector is NOT recursive — mounting
+  # subdirectories means they are never read. Mount data/ flat so every
+  # *.prom file in it is picked up.
   textfile-collector:
     image: prom/node-exporter:latest
     container_name: moodle-textfile-collector
@@ -9,8 +12,7 @@ services:
     ports:
       - "127.0.0.1:9101:9100"
     volumes:
-      - ./data/python:/var/lib/node_exporter/textfile_collector/python:ro
-      - ./data/docker:/var/lib/node_exporter/textfile_collector/docker:ro
+      - ./data:/var/lib/node_exporter/textfile_collector:ro
     command:
       - '--path.rootfs=/host'
       - '--collector.textfile.directory=/var/lib/node_exporter/textfile_collector'
