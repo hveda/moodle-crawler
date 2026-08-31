@@ -1,15 +1,3 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-ENV/
-env/
-pip-log.txt
-pip-delete-this-directory.txt
-
 # Go
 *.exe
 *.exe~
@@ -24,71 +12,26 @@ go.work
 build/
 dist/
 
-# Security - Never commit these files
+# Secrets — never commit
 .env
-.env.local
-.env.production
-.env.staging
-.env.development
-*.env
+.env.*
 !.env.example
-!.env.local.example
-*.pem
-*.key
-*.p12
-*.pfx
-id_rsa*
-id_dsa*
-id_ecdsa*
-id_ed25519*
-known_hosts*
-authorized_keys*
-config/docker/docker-config.json
-secrets/
-credentials/
-*.crt
-*.csr
-*.ca-bundle
-*.p7b
-*.p7c
-*.p7s
-*.der
 
-# SSH and authentication
-.ssh/
-ssh_config
-sshd_config
-
-# Grafana local data and config that may contain credentials
+# Grafana local data
 data/grafana/
-config/grafana/grafana.ini
 
-# Backup files that may contain sensitive data
-*.backup
-*.bak
-*.old
-*.orig
-
-# IDE
+# IDE / OS
 .vscode/
 .idea/
 *.swp
-*.swo
-*~
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Runtime data
 logs/
+*.log
 
-# Temporary files
-tmp/
-temp/
-
-# Data files (may contain sensitive metrics)
+# Metrics data files (regenerated; may contain site labels)
 data/
 *.prom
 *.prom.*

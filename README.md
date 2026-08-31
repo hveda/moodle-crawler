@@ -1,113 +1,109 @@
 # Moodle Statistics Crawler
 
-A simple tool to collect online user counts and latency metrics from Moodle sites. Designed for straightforward data gathering with optional local visualization.
+Single Go binary. Scrapes Moodle sites as a guest, exports Prometheus metrics:
+online user counts, URL-discovery latency, and (with `--courses`) per-course and
+per-section page load latencies. Static binary, zero runtime dependencies.
 
-## 🎯 What This Tool Does
+Production deployment: systemd service on LXC, 60s interval, metrics flow
+crawler → node_exporter textfile collector → Prometheus → Grafana.
 
-- **Collects online user counts** from Moodle sites (guest access)
-- **Measures latency** for URL discovery operations
-- **Exports metrics** in Prometheus format for monitoring
-- **Single Go implementation** — static binary or container, no runtime dependencies
-
-> **Note:** The Python implementation was removed in favor of the Go one.
-> The Go version now covers all former Python functionality (duration limit
-> via `--duration`, scrape-failure semantics that never write false zeros).
-> The crawler never collects individual user data — only aggregate counts.
-
-## 🚀 Quick Start
-
-### Run Locally
+## Quick Start
 
 ```bash
 make build
 ./build/moodle-crawler --url=https://your-moodle-site.com --interval=60
 ```
 
-### Flags
+## Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--url` | `https://example.com` | Base Moodle URL |
 | `--interval` | `60` | Seconds between crawls |
+| `--textfile-dir` | *(empty)* | Directory for node_exporter textfile snapshot. Required for live Prometheus scraping |
+| `--courses` | `false` | Discover courses, measure course/section page load latencies |
 | `--duration` | `0` | Stop after N minutes (0 = run forever) |
-| `--output-dir` | `data` | Output directory |
-| `--prometheus` | `true` | Write Prometheus metrics files |
+| `--output-dir` | `data` | Directory for history `.prom` files |
+| `--prometheus` | `true` | Write history `.prom` files |
 | `--healthcheck` | `false` | One-off probe of the local `/health` endpoint, then exit |
 
-### Health Endpoint
+Health endpoint: `GET :9100/health` → 200 when last scrape succeeded, 500
+otherwise. For systemd watchdogs and container HEALTHCHECKs.
 
-The crawler serves `GET /health` on port `9100`, returning `200 OK` when the
-last scrape succeeded and `500` otherwise — for systemd watchdogs, Docker
-`HEALTHCHECK`, and external orchestrators.
+## Metrics
 
-## 📊 Metrics
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `moodle_online_users_total` | `site` | Online user count. **Only written on successful scrape** — never a false zero |
+| `moodle_find_online_users_latency_milliseconds` | `site` | URL discovery latency |
+| `moodle_scrape_success` | `site` | 1 = last scrape OK, 0 = failed |
+| `moodle_course_page_load_latency_ms` | `site,course` | Course page load time (`--courses`) |
+| `moodle_section_page_avg_load_latency_ms` | `site,course,section` | Section page avg load (`--courses`) |
+| `moodle_section_page_max_load_latency_ms` | `site,course,section` | Section page max load (`--courses`) |
+| `moodle_section_page_min_load_latency_ms` | `site,course,section` | Section page min load (`--courses`) |
 
-| File | Metric | Meaning |
-|------|--------|---------|
-| `metrics.prom` | `moodle_online_users_total{site}` | Online user count (only written on successful scrape) |
-| `latency.prom` | `moodle_find_online_users_latency_milliseconds{site}` | URL-discovery latency |
-| `scrape_success.prom` | `moodle_scrape_success{site}` | 1 = last scrape OK, 0 = fetch failed |
+On fetch failure no user-count line is written — a zero would be
+indistinguishable from a real "0 users online". Watch `moodle_scrape_success`
+for outages.
 
-On fetch failure the crawler writes **no** user-count line — a zero would be
-indistinguishable from a real "0 users online" in Grafana. Watch
-`moodle_scrape_success` for outages.
+History files auto-rotate at 10MB. Textfile snapshot (`--textfile-dir`) is
+rewritten atomically each cycle with current values (no timestamps — let
+Prometheus stamp ingestion time). In `--courses` mode only the course pass
+writes the snapshot, so all families appear consistently.
 
-Files auto-rotate at 10MB (`metrics.prom.YYYYMMDDHHMMSS.backup`).
+Only courses with guest access are measured; ~10 courses appear/disappear
+over time as guest access is toggled by admins. This is expected.
 
-## 📊 Local Monitoring with Grafana
+## Local Monitoring with Grafana
 
 ```bash
-docker-compose up -d   # Grafana + node-exporter textfile collector
+docker compose up -d   # Grafana + node_exporter textfile collector
 ```
 
-Access Grafana at http://localhost:3000 (admin/admin). The textfile collector
-mounts `./data` flat (node-exporter's textfile collector is not recursive).
+Grafana at http://localhost:3000 (admin/admin). Datasource points at the
+textfile collector container. `data/` is mounted flat — node_exporter's
+textfile collector is not recursive.
 
-## 🚢 Remote Deployment
-
-### Deploy Go Binary + systemd (no container runtime required)
+## Remote Deployment (binary + systemd)
 
 ```bash
 REMOTE_HOST=your-server.com MOODLE_URL=https://your-moodle-site.com ./deploy.sh
 ```
 
-Creates a `moodle` user, installs the static binary to
-`/opt/moodle-crawler/bin/`, and runs it as a hardened systemd service
-(`NoNewPrivileges`, `ProtectSystem=strict`, `ReadWritePaths=data`).
+Creates `moodle` user, installs static binary to `/opt/moodle-crawler/bin/`,
+hardened systemd service (`NoNewPrivileges`, `ProtectSystem=strict`,
+`ReadWritePaths`). No container runtime needed.
 
-### Deploy Container Version
+For a full stack (crawler + node_exporter + Prometheus + Grafana as native
+services), see deploy.sh — it covers the crawler; broker/exporter stack is
+installed separately per host.
 
-```bash
-./deploy-docker.sh --remote-host your-server.com
-```
-
-## 🛠 Available Commands
+## Commands
 
 ```bash
-make help              # Show all commands
-make build             # Build Go binary
-make test              # Run Go tests
-make clean             # Clean build artifacts
-make run-go            # Run Go crawler locally
-make deploy            # Deploy Go binary to remote server (systemd)
-make docker-deploy     # Deploy container to remote server
-make sync-data         # Sync data from remote server
-make docker-build      # Build container image locally
-make container-info    # Show container runtime info
+make build    # compile to build/moodle-crawler
+make test     # go test
+make vet      # go vet
+make fmt      # gofmt (write)
+make clean    # remove build/
+make run      # run locally against example.com
+make deploy   # deploy via deploy.sh
 ```
 
-## 🏗 Architecture
+## Architecture
 
-- `main.go` — crawler: guest login → URL discovery → count extraction → metrics files
-- `Dockerfile` — multi-stage build (golang:1.26-alpine → distroless/static:nonroot)
-- `deploy.sh` — Go binary + systemd deployment
-- `deploy-docker.sh` — container + systemd deployment
-- `grafana/` — provisioned datasource + dashboard
+- `main.go` — crawler core: guest login → URL discovery → count extraction →
+  metrics files + textfile snapshot + health server
+- `courses.go` — course discovery, section parsing, section latency stats
+- `Dockerfile` — multi-stage (golang:1.26-alpine → distroless/static:nonroot)
+- `deploy.sh` — binary + systemd deployment
+- `docker-compose.yml` — local dev stack (Grafana + textfile collector)
+- `grafana/` — provisioned datasource + 8-panel dashboard
 
-Extraction strategies (in priority order): `div.info` text →
-`block_online_users` divs → header parents → full-text regex. Guest login
-handles English and Indonesian (`akses tamu`) Moodle instances.
+Extraction priority: `div.info` text → `block_online_users` divs → header
+parents → full-text regex. Guest login handles English and Indonesian
+(`akses tamu`) Moodle instances.
 
-## 📄 License
+## License
 
 MIT
