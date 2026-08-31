@@ -30,7 +30,7 @@ func ensureDir(dir string) error {
 // writeTextfileSnapshot writes a current-value .prom file (one line per
 // metric, no timestamps) for node_exporter's textfile collector, which
 // rejects appended files with client-side timestamps. Atomic via tmp+rename.
-func writeTextfileSnapshot(dir, siteLabel string, onlineCount int, latencyMs int, success bool) error {
+func writeTextfileSnapshot(dir, siteLabel string, onlineCount int, latencyMs int, success bool, courseLatencies map[int]int, courses []courseEntry, sectionStats []sectionStat) error {
 	if dir == "" {
 		return nil
 	}
@@ -41,23 +41,47 @@ func writeTextfileSnapshot(dir, siteLabel string, onlineCount int, latencyMs int
 	if success {
 		successVal = 1
 	}
-	content := fmt.Sprintf(
-		"# HELP moodle_online_users_total Total number of online users on the Moodle site\n"+
-			"# TYPE moodle_online_users_total gauge\n"+
-			"moodle_online_users_total{site=\"%s\"} %d\n"+
-			"# HELP moodle_find_online_users_latency_milliseconds Latency (milliseconds) to locate the online users URL\n"+
-			"# TYPE moodle_find_online_users_latency_milliseconds gauge\n"+
-			"moodle_find_online_users_latency_milliseconds{site=\"%s\"} %d\n"+
-			"# HELP moodle_scrape_success Whether the last scrape succeeded (1) or failed (0)\n"+
-			"# TYPE moodle_scrape_success gauge\n"+
-			"moodle_scrape_success{site=\"%s\"} %d\n",
-		siteLabel, onlineCount,
-		siteLabel, latencyMs,
-		siteLabel, successVal,
-	)
+	var b strings.Builder
+	fmt.Fprintf(&b, "# HELP moodle_online_users_total Total number of online users on the Moodle site\n")
+	fmt.Fprintf(&b, "# TYPE moodle_online_users_total gauge\n")
+	fmt.Fprintf(&b, "moodle_online_users_total{site=%q} %d\n", siteLabel, onlineCount)
+	fmt.Fprintf(&b, "# HELP moodle_find_online_users_latency_milliseconds Latency (milliseconds) to locate the online users URL\n")
+	fmt.Fprintf(&b, "# TYPE moodle_find_online_users_latency_milliseconds gauge\n")
+	fmt.Fprintf(&b, "moodle_find_online_users_latency_milliseconds{site=%q} %d\n", siteLabel, latencyMs)
+	fmt.Fprintf(&b, "# HELP moodle_scrape_success Whether the last scrape succeeded (1) or failed (0)\n")
+	fmt.Fprintf(&b, "# TYPE moodle_scrape_success gauge\n")
+	fmt.Fprintf(&b, "moodle_scrape_success{site=%q} %d\n", siteLabel, successVal)
+	// Course/section latency families (--courses mode). Current values only —
+	// node_exporter stamps scrape time; timestamps in textfiles are rejected.
+	if len(courseLatencies) > 0 {
+		fmt.Fprintf(&b, "# HELP moodle_course_page_load_latency_ms Course page load latency (ms)\n")
+		fmt.Fprintf(&b, "# TYPE moodle_course_page_load_latency_ms gauge\n")
+		for _, c := range courses {
+			if ms, ok := courseLatencies[c.ID]; ok {
+				fmt.Fprintf(&b, "moodle_course_page_load_latency_ms{course=%q,site=%q} %d\n", c.Name, siteLabel, ms)
+			}
+		}
+	}
+	if len(sectionStats) > 0 {
+		fmt.Fprintf(&b, "# HELP moodle_section_page_avg_load_latency_ms Average section page load latency (ms)\n")
+		fmt.Fprintf(&b, "# TYPE moodle_section_page_avg_load_latency_ms gauge\n")
+		for _, s := range sectionStats {
+			fmt.Fprintf(&b, "moodle_section_page_avg_load_latency_ms{course=%q,section=%q} %s\n", s.Course, s.Section, trimFloat(s.Avg))
+		}
+		fmt.Fprintf(&b, "# HELP moodle_section_page_max_load_latency_ms Maximum section page load latency (ms)\n")
+		fmt.Fprintf(&b, "# TYPE moodle_section_page_max_load_latency_ms gauge\n")
+		for _, s := range sectionStats {
+			fmt.Fprintf(&b, "moodle_section_page_max_load_latency_ms{course=%q,section=%q} %d\n", s.Course, s.Section, s.Max)
+		}
+		fmt.Fprintf(&b, "# HELP moodle_section_page_min_load_latency_ms Minimum section page load latency (ms)\n")
+		fmt.Fprintf(&b, "# TYPE moodle_section_page_min_load_latency_ms gauge\n")
+		for _, s := range sectionStats {
+			fmt.Fprintf(&b, "moodle_section_page_min_load_latency_ms{course=%q,section=%q} %d\n", s.Course, s.Section, s.Min)
+		}
+	}
 	tmp := filepath.Join(dir, ".moodle-crawler.prom.tmp")
 	final := filepath.Join(dir, "moodle-crawler.prom")
-	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, final)
@@ -460,6 +484,7 @@ func main() {
 		resp, err := client.Do(req)
 		html := ""
 		success := false
+		count := 0
 		if err == nil {
 			b, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
@@ -495,12 +520,12 @@ func main() {
 			log.Printf("scrape failed, skipping moodle_online_users_total write\n")
 			// Still refresh the textfile snapshot so scrape_success=0 is visible.
 			if *textfileDir != "" {
-				if err := writeTextfileSnapshot(*textfileDir, siteLabel, 0, latencyMs, false); err != nil {
+				if err := writeTextfileSnapshot(*textfileDir, siteLabel, 0, latencyMs, false, nil, nil, nil); err != nil {
 					log.Printf("error writing textfile snapshot: %v\n", err)
 				}
 			}
 		} else {
-			count := extractOnlineUsers(html)
+			count = extractOnlineUsers(html)
 			log.Printf("extracted online users: %d from %s\n", count, u)
 			metricLine := fmt.Sprintf("moodle_online_users_total{site=\"%s\"} %d %d", siteLabel, count, ts)
 			if *prometheus {
@@ -509,7 +534,7 @@ func main() {
 				}
 			}
 			if *textfileDir != "" {
-				if err := writeTextfileSnapshot(*textfileDir, siteLabel, count, latencyMs, true); err != nil {
+				if err := writeTextfileSnapshot(*textfileDir, siteLabel, count, latencyMs, true, nil, nil, nil); err != nil {
 					log.Printf("error writing textfile snapshot: %v\n", err)
 				}
 			}
@@ -540,6 +565,13 @@ func main() {
 					log.Printf("error writing course metrics: %v\n", err)
 				} else {
 					log.Printf("course metrics: %d courses, %d section stats\n", len(courseLatencies), len(allStats))
+					// Refresh the textfile snapshot with course/section families
+					// so they reach Prometheus via node_exporter.
+					if *textfileDir != "" {
+						if err := writeTextfileSnapshot(*textfileDir, siteLabel, count, latencyMs, true, courseLatencies, courses, allStats); err != nil {
+							log.Printf("error writing textfile snapshot: %v\n", err)
+						}
+					}
 				}
 			}
 			ccancel()
