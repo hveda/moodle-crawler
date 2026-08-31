@@ -533,7 +533,9 @@ func main() {
 					log.Printf("error writing metric: %v\n", err)
 				}
 			}
-			if *textfileDir != "" {
+			// Write base snapshot only when NOT in course mode —
+			// course collection writes the full 7-family snapshot at the end.
+			if *textfileDir != "" && !*coursesMode {
 				if err := writeTextfileSnapshot(*textfileDir, siteLabel, count, latencyMs, true, nil, nil, nil); err != nil {
 					log.Printf("error writing textfile snapshot: %v\n", err)
 				}
